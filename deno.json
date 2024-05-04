@@ -1,12 +1,16 @@
 {
-  "imports": {
-    "shed": "https://ghuc.cc/worker-tools/shed/index.ts"
-  },
-  "compilerOptions": {
-    "strict": false
-  },
-  "tasks": {
-    "dev": "deno run --watch -A server.ts"
-  },
-  "unstable": ["kv"]
+	"imports": {
+		"shed": "https://ghuc.cc/worker-tools/shed/index.ts"
+	},
+	"compilerOptions": {
+		"strict": false
+	},
+	"fmt": {
+		"useTabs": true,
+		"semiColons": false
+	},
+	"tasks": {
+		"dev": "deno run --watch -A server.ts"
+	},
+	"unstable": ["kv"]
 }
