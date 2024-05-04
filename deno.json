@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "fedify": "jsr:@fedify/fedify@^0.7.0"
+  },
+  "tasks": {
+    "dev": "deno run --watch -A server.ts"
+  }
+}
