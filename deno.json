@@ -1,8 +1,12 @@
 {
   "imports": {
-    "fedify": "jsr:@fedify/fedify@^0.7.0"
+    "shed": "https://ghuc.cc/worker-tools/shed/index.ts"
+  },
+  "compilerOptions": {
+    "strict": false
   },
   "tasks": {
     "dev": "deno run --watch -A server.ts"
-  }
+  },
+  "unstable": ["kv"]
 }
