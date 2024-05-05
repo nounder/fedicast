@@ -3,7 +3,13 @@
 		"shed": "https://ghuc.cc/worker-tools/shed/index.ts"
 	},
 	"compilerOptions": {
-		"strict": false
+		"strict": false,
+		"implicitAny": true
+	},
+	"lint": {
+		"rules": {
+			"exclude": ["no-explicit-any", "no-unsafe-any"]
+		}
 	},
 	"fmt": {
 		"useTabs": true,

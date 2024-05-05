@@ -2,6 +2,7 @@ import {
 	Accept,
 	Article,
 	Create,
+	Endpoints,
 	exportJwk,
 	Federation,
 	Follow,
@@ -14,12 +15,16 @@ import {
 } from "jsr:@fedify/fedify"
 import { DenoKvMessageQueue, DenoKvStore } from "jsr:@fedify/fedify/x/denokv"
 import { KV } from "./store.ts"
-import { requestNeynar } from "./farcaster.ts"
+import { requestNeynar, makeFeedActivities } from "./farcaster.ts"
 
 const federation = new Federation({
 	kv: new DenoKvStore(KV),
 	queue: new DenoKvMessageQueue(KV),
 	treatHttps: true,
+	onOutboxError: (error, activity) => {
+		console.error("Failed to deliver an activity:", error)
+		console.error("Activity:", activity)
+	},
 })
 
 federation
@@ -30,32 +35,65 @@ federation
 		if (follow.id == null || follow.actorId == null || follow.objectId == null) {
 			return
 		}
+
 		const handle = ctx.getHandleFromActorUri(follow.objectId)
-
-		if (handle !== "me") return
-
 		const follower = await follow.getActor(ctx)
 
+		// automatically accept follow
 		await ctx.sendActivity(
 			{ handle },
 			follower,
 			new Accept({ actor: follow.objectId, object: follow })
 		)
+
+		await KV.set(["followers", handle, follow.actorId.href], {})
+
+		const feed = await makeFeedActivities(ctx, handle)
+		await feed.send(follower)
+	})
+	.onError(async (ctx, error) => {
+		console.error(error)
 	})
 
 federation
 	.setActorDispatcher("/users/{handle}", async (ctx, handle, key) => {
+		const res = await requestNeynar(
+			`/v1/farcaster/user-by-username?username=${handle}`
+		).then((v) => v.result.user)
+
+		const pfpUrl = res.pfp?.url
+
 		return new Person({
 			id: ctx.getActorUri(handle),
-			name: "Me",
-			summary: "This is me!",
+			name: res.displayName,
+			summary: res.profile.bio?.text || "",
 			preferredUsername: handle,
-			icon: new Image({
-				url: new URL(`https://picsum.photos/seed/${handle}/200/200`),
+			icon: pfpUrl
+				? new Image({
+						url: new URL(
+							"https://wrpcd.net/cdn-cgi/image/fit=contain,f=auto,w=144/" +
+								pfpUrl
+						),
+					})
+				: null,
+			image: new Image({
+				url: new URL(
+					"https://wrpcd.net/cdn-cgi/image/fit=contain,f=auto,w=1500/" +
+						"https://i.imgur.com/PVc67AW.png"
+				),
 			}),
+			discoverable: true,
+			indexable: true,
 			url: new URL("/", ctx.url),
-			inbox: ctx.getInboxUri(handle), // Inbox URI
-			publicKey: key, // generated in setKeyPairDispatched
+			inbox: ctx.getInboxUri(handle),
+			outbox: ctx.getOutboxUri(handle),
+			publicKey: key,
+
+			followers: ctx.getFollowersUri(handle),
+
+			endpoints: new Endpoints({
+				sharedInbox: ctx.getInboxUri(),
+			}),
 		})
 	})
 	.setKeyPairDispatcher(async (ctx, handle) => {
@@ -80,32 +118,36 @@ federation
 		return { privateKey, publicKey }
 	})
 
-const ItemCountPerPage = 100
+federation.setFollowersDispatcher(
+	"/users/{handle}/followers",
+	async (ctx, handle, cursor) => {
+		const followers = []
+
+		for await (const entry of KV.list({ prefix: ["followers", handle] })) {
+			const follower = entry.key[2] as string
+
+			followers.push(new URL(follower))
+		}
+
+		return { items: followers, nextCursor: null }
+	}
+)
 
 federation
 	.setOutboxDispatcher("/users/{handle}/outbox", async (ctx, handle, cursor) => {
 		const res = await requestNeynar(
-			"feed?feed_type=following&fid=3&with_recasts=false&limit=100" +
+			"/v2/farcaster/feed?feed_type=following&fid=3&with_recasts=false&limit=10" +
 				"&cursor=" +
 				cursor
 		)
 
-		const items = res.casts.map(
-			(cast) =>
-				new Create({
-					id: new URL(`/casts/${cast.hash}#activity`, ctx.url),
-					actor: ctx.getActorUri(handle),
-					object: new Note({
-						id: new URL(`/casts/${cast.hash}`, ctx.url),
-						content: cast.text,
-						published: Temporal.Instant.from(cast.timestamp),
-					}),
-				})
-		)
+		const { items } = await makeFeedActivities(ctx, handle)
+
 		return { items, nextCursor: res.next?.cursor || null }
 	})
 	.setFirstCursor((ctx, handle) => {
 		return ""
 	})
+	.setCounter(async () => 50)
 
 export { federation }
