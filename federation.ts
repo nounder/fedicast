@@ -6,12 +6,15 @@ import {
 	Federation,
 	Follow,
 	generateCryptoKeyPair,
+	Image,
 	importJwk,
 	MemoryKvStore,
+	Note,
 	Person,
 } from "jsr:@fedify/fedify"
 import { DenoKvMessageQueue, DenoKvStore } from "jsr:@fedify/fedify/x/denokv"
 import { KV } from "./store.ts"
+import { requestNeynar } from "./farcaster.ts"
 
 const federation = new Federation({
 	kv: new DenoKvStore(KV),
@@ -42,20 +45,20 @@ federation
 
 federation
 	.setActorDispatcher("/users/{handle}", async (ctx, handle, key) => {
-		if (handle !== "me") return null
 		return new Person({
 			id: ctx.getActorUri(handle),
 			name: "Me",
 			summary: "This is me!",
 			preferredUsername: handle,
+			icon: new Image({
+				url: new URL(`https://picsum.photos/seed/${handle}/200/200`),
+			}),
 			url: new URL("/", ctx.url),
 			inbox: ctx.getInboxUri(handle), // Inbox URI
 			publicKey: key, // generated in setKeyPairDispatched
 		})
 	})
 	.setKeyPairDispatcher(async (ctx, handle) => {
-		if (handle != "me") return null // Other than "me" is not found.
-
 		const storeKey = ["keys", handle]
 		const entry = await KV.get<{ privateKey: unknown; publicKey: unknown }>(
 			storeKey
@@ -68,6 +71,7 @@ federation
 				privateKey: await exportJwk(privateKey),
 				publicKey: await exportJwk(publicKey),
 			})
+
 			return { privateKey, publicKey }
 		}
 		const privateKey = await importJwk(entry.value.privateKey, "private")
@@ -80,33 +84,28 @@ const ItemCountPerPage = 100
 
 federation
 	.setOutboxDispatcher("/users/{handle}/outbox", async (ctx, handle, cursor) => {
-		const posts = []
-		const items = posts.map(
-			(post) =>
+		const res = await requestNeynar(
+			"feed?feed_type=following&fid=3&with_recasts=false&limit=100" +
+				"&cursor=" +
+				cursor
+		)
+
+		const items = res.casts.map(
+			(cast) =>
 				new Create({
-					id: new URL(`/posts/${post.id}#activity`, ctx.url),
+					id: new URL(`/casts/${cast.hash}#activity`, ctx.url),
 					actor: ctx.getActorUri(handle),
-					object: new Article({
-						id: new URL(`/posts/${post.id}`, ctx.url),
-						summary: post.title,
-						content: post.content,
+					object: new Note({
+						id: new URL(`/casts/${cast.hash}`, ctx.url),
+						content: cast.text,
+						published: Temporal.Instant.from(cast.timestamp),
 					}),
 				})
 		)
-		return { items }
+		return { items, nextCursor: res.next?.cursor || null }
 	})
 	.setFirstCursor((ctx, handle) => {
 		return ""
-	})
-	.setLastCursor(async (ctx, handle) => {
-		// The following `countPostsByUserHandle` is a hypothetical function:
-		const total = 0
-		// The last cursor is the offset of the last page:
-		return (total - (total % ItemCountPerPage)).toString()
-	})
-	.setCounter(async (ctx, handle) => {
-		// The following `countPostsByUserHandle` is a hypothetical function:
-		return 0
 	})
 
 export { federation }

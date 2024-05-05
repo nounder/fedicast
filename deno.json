@@ -12,5 +12,5 @@
 	"tasks": {
 		"dev": "deno run --watch -A server.ts"
 	},
-	"unstable": ["kv"]
+	"unstable": ["kv", "temporal"]
 }

@@ -1,22 +1,30 @@
-import { Actor, Follow, lookupObject, Person } from "fedify"
+import { Actor, Follow, lookupObject, Person } from "jsr:@fedify/fedify"
 import { federation } from "./federation.ts"
+import { Create, Note, PUBLIC_COLLECTION } from "jsr:@fedify/fedify"
 
 const ctx = federation.createContext({
-	url: "https://3a01-172-90-234-126.ngrok-free.app/users/me",
+	url: "https://rafael-air-m1.tail472f72.ts.net/users/me/outbox?cursor=",
 } as Request)
 
-console.log(ctx)
-
 const recipient = (await lookupObject(
-	"https://activitypub.academy/@babicia_vepas",
+	"https://activitypub.academy/@dobessia_rakdus"
 )) as Actor
 
+const me = "@me@rafael-air-m1.tail472f72.ts.net"
+
+const actorUri = ctx.getActorUri(me)
+
 await ctx.sendActivity(
-	{ handle: "@me@3a01-172-90-234-126.ngrok-free.app" },
+	{ handle: me },
 	recipient,
-	new Follow({
-		actor: ctx.getActorUri("@me@3a01-172-90-234-126.ngrok-free.app"),
-		object: recipient!.id,
+	new Create({
+		actor: ctx.getActorUri(me),
+		to: PUBLIC_COLLECTION,
+		object: new Note({
+			attribution: ctx.getActorUri(me),
+			to: PUBLIC_COLLECTION,
+		}),
 	}),
-	{ immediate: true },
+	{ immediate: true, preferSharedInbox: true }
 )
+console.log("sent")

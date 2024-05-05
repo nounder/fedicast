@@ -1,5 +1,7 @@
 import { federation } from "./federation.ts"
 import * as shed from "shed"
+import { Postgres } from "./postgres.ts"
+import { appRecovery } from "./middleware.ts"
 
 const router = new shed.WorkerRouter()
 
@@ -16,5 +18,7 @@ router.any("*", (req, ctx) => {
 		contextData: undefined,
 	})
 })
+
+router.recover("*", appRecovery)
 
 Deno.serve(router.serveCallback)
